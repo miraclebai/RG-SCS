@@ -26,7 +26,7 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-[Download the example ZIP](https://github.com/miraclebai/RG-SCS/releases/download/example-files/rg-scs-example.zip)
+[Download the example ZIP](https://github.com/miraclebai/RG-SCS/releases/download/example-files/rg-scs-example.zip?v=2)
 
 ```bash
 unzip rg-scs-example.zip
