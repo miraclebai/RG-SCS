@@ -44,7 +44,7 @@ def infer(run, tag, data_root=ROOT, device="cuda:0", output_root=ROOT/"inference
     rr=rows(data_root)
     if not rr: raise ValueError('No test samples in manifest')
     records=[];start=time.time()
-    dump(dest/'protocol.json',dict(checkpoint=str(ckpath),checkpoint_sha256=sha,epoch=ck['epoch'],
+    dump(dest/'protocol.json',dict(checkpoint=str(ckpath),checkpoint_sha256=sha,
          legacy_metrics='Hann RD amplitude PSNR; truth-defined target/main-lobe clutter regions',
          component_metrics='G_X estimated once from mixed input and guarded references; same G_X applied to S and B after prediction',
          side_metrics='Hann FFT background component power; symmetric bands excluding zero and endpoints; mean of per-sample dB',
@@ -59,7 +59,7 @@ def infer(run, tag, data_root=ROOT, device="cuda:0", output_root=ROOT/"inference
         # Labels are never provided to the inference network or relation calibration.
         target=load_target(row,data_root)
         vmax=max(float(rd(q['x']).max()),float(rd(target).max()) if target is not None else 0.,1e-20)
-        plot(dest/(row['id']+'.png'),output,f'Output | RG-SCS | {tag} epoch {ck["epoch"]} | {row["kind"]}',
+        plot(dest/(row['id']+'.png'),output,f'Output | RG-SCS | {tag} | {row["kind"]}',
              int(row['core_start_one_based']),vmax)
         rec=dict(id=row['id'],kind=row['kind'],source_id=row['source_id'],scr_support_db=row['scr_support_db'],
                  solve_residual=float(res.max()))
@@ -98,7 +98,7 @@ def infer(run, tag, data_root=ROOT, device="cuda:0", output_root=ROOT/"inference
             valid=[r[key] for r in group if r.get(key) is not None and np.isfinite(r[key])]
             stats[name][key]=float(np.mean(valid)) if valid else None
             stats[name][key+'_valid_count']=len(valid)
-    summary=dict(epoch=ck['epoch'],checkpoint=tag,checkpoint_sha256=sha,test_count=len(rr),groups=stats,seconds=time.time()-start)
+    summary=dict(checkpoint=tag,checkpoint_sha256=sha,test_count=len(rr),groups=stats,seconds=time.time()-start)
     from PIL import Image
     for row in rr:
         with Image.open(dest/(row['id']+'.png')) as im:im.verify()

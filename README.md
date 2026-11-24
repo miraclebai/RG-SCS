@@ -26,9 +26,10 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Download the [best checkpoint (epoch 247)](https://drive.google.com/file/d/1OhR8Nf3euxgon_mejNeQJhKgiMfGmvH6/view?usp=drivesdk) and the [measured IQ sample](https://drive.google.com/file/d/1UQD8ofdpbCVOm-O0lUT2ogk87NnQ-R6B/view?usp=drivesdk) to the repository root. Google Drive access is required. Run inference on the echo shown above:
+[Download the example ZIP](https://github.com/miraclebai/RG-SCS/releases/download/example-files/rg-scs-example.zip)
 
 ```bash
+unzip rg-scs-example.zip
 python method/infer.py --checkpoint best.pt --input real_20221113070041_stare_HH_p000512_r0492.npz --first-range-bin 492 --output-dir inference/measured
 ```
 
@@ -46,4 +47,4 @@ python method/train.py --data-root "$DATA_ROOT" --epochs 250 --batch-size 768 --
 python method/infer.py --data-root "$DATA_ROOT" --run-dir runs/full --tag best --device cuda --output-dir inference/full
 ```
 
-Training reads the `train` split. Add `--resume` to the same command to continue an interrupted run. Inference reads the `test` split and loads `best.pt` or `last.pt` from the run directory. Best-checkpoint selection begins at epoch 21. Fresh runs use cosine decay; the experiment shown above used a fixed learning rate after epoch 85.
+Training reads the `train` split. Add `--resume` to the same command to continue an interrupted run. Inference reads the `test` split and loads `best.pt` or `last.pt` from the run directory. Fresh runs use cosine decay; the experiment shown above used a fixed learning rate after epoch 85.
