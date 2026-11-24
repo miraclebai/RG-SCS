@@ -5,3 +5,4 @@ dataset/
 runs/
 inference/
 reports/training_status.json
+demo-data/

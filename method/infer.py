@@ -28,17 +28,21 @@ def component_metrics(m,x,s,rel,prf=2000):
             out[f'{tag}_{sign}_background_suppression_db']=10*np.log10(max(a,1e-30)/max(b,1e-30))
     return out
 
-def infer(run,tag):
+def infer(run, tag, data_root=ROOT, device="cuda:0", output_root=ROOT/"inference"):
     ckpath=run/(tag+'.pt');ck=torch.load(ckpath,map_location='cpu',weights_only=False)
     cfg=ck['config'].copy();cfg.update(cg_iterations=384,cg_tolerance=1e-6)
-    m=RGSCS(cfg).cuda();m.load_state_dict(ck['model']);m.eval()
-    dest=ROOT/'inference'/tag;sha=hashlib.sha256(ckpath.read_bytes()).hexdigest()
+    m=RGSCS(cfg).to(device);m.load_state_dict(ck['model']);m.eval()
+    dest=output_root/tag;sha=hashlib.sha256(ckpath.read_bytes()).hexdigest()
+    manifest_hash = hashlib.sha256((data_root/'reports/manifest.csv').read_bytes()).hexdigest()
+    dataset_id = str(data_root.resolve())
     if (dest/'completed.json').exists():
         done=json.loads((dest/'completed.json').read_text())
-        if done['checkpoint_sha256']==sha:return json.loads((dest/'summary.json').read_text())
-        raise RuntimeError('Completed inference belongs to a different checkpoint')
+        if (done['checkpoint_sha256']==sha and done.get('manifest_sha256')==manifest_hash
+                and done.get('data_root')==dataset_id):return json.loads((dest/'summary.json').read_text())
+        raise RuntimeError('Completed inference belongs to a different checkpoint or dataset; choose a new --output-dir')
     dest.mkdir(parents=True,exist_ok=True)
-    rr=rows(ROOT);assert len(rr)==379
+    rr=rows(data_root)
+    if not rr: raise ValueError('No test samples in manifest')
     records=[];start=time.time()
     dump(dest/'protocol.json',dict(checkpoint=str(ckpath),checkpoint_sha256=sha,epoch=ck['epoch'],
          legacy_metrics='Hann RD amplitude PSNR; truth-defined target/main-lobe clutter regions',
@@ -46,14 +50,14 @@ def infer(run,tag):
          side_metrics='Hann FFT background component power; symmetric bands excluding zero and endpoints; mean of per-sample dB',
          real_clean_truth_available=False,save_npz=False,one_panel_per_png=True))
     for i,row in enumerate(rr):
-        q=load_input(row,ROOT)
-        to=lambda k:torch.from_numpy(q[k])[None].cuda()
+        q=load_input(row,data_root)
+        to=lambda k:torch.from_numpy(q[k])[None].to(device)
         with torch.no_grad():
             x=to('x');rel=m.relations(x,to('refs_left'),to('refs_right'));y,res=m.solve(x,rel)
             assert bool(torch.isfinite(y).all()) and float(res.max())<5e-5
             output=y[0].cpu().numpy()
         # Labels are never provided to the inference network or relation calibration.
-        target=load_target(row,ROOT)
+        target=load_target(row,data_root)
         vmax=max(float(rd(q['x']).max()),float(rd(target).max()) if target is not None else 0.,1e-20)
         plot(dest/(row['id']+'.png'),output,f'Output | RG-SCS | {tag} epoch {ck["epoch"]} | {row["kind"]}',
              int(row['core_start_one_based']),vmax)
@@ -78,7 +82,7 @@ def infer(run,tag):
     keys=list(dict.fromkeys(k for r in records for k in r))
     with (dest/'metrics.csv').open('w',newline='') as f:
         w=csv.DictWriter(f,fieldnames=keys);w.writeheader();w.writerows(records)
-    syn=[r for r in records if r['kind']=='synthetic'];assert len(syn)==239
+    syn=[r for r in records if r['kind']=='synthetic']
     selected=['input_scr_db','scr_db','input_mcp','mcp','target_energy_retention','delta_scr_db','delta_mcp_db','psnr_db','target_keep_error','background_leak_rate',
               'display_positive_background_suppression_db','display_negative_background_suppression_db',
               'full_positive_background_suppression_db','full_negative_background_suppression_db',
@@ -98,11 +102,17 @@ def infer(run,tag):
     from PIL import Image
     for row in rr:
         with Image.open(dest/(row['id']+'.png')) as im:im.verify()
-    assert len(list(dest.glob('*.png')))==379 and not list(dest.rglob('*.npz'))
+    assert len(list(dest.glob('*.png')))==len(rr) and not list(dest.rglob('*.npz'))
     dump(dest/'summary.json',summary)
-    dump(dest/'completed.json',dict(success=True,png_count=379,checkpoint_sha256=sha))
+    dump(dest/'completed.json',dict(success=True,png_count=len(rr),checkpoint_sha256=sha,manifest_sha256=manifest_hash,data_root=dataset_id))
     return summary
 if __name__=='__main__':
     import argparse
-    p=argparse.ArgumentParser();p.add_argument('--tag',choices=['best','last'],required=True);a=p.parse_args()
-    print(json.dumps(infer(ROOT/'runs/rg-scs',a.tag),indent=2))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data-root', type=Path, default=ROOT)
+    parser.add_argument('--run-dir', type=Path, default=ROOT/'runs/rg-scs')
+    parser.add_argument('--tag', choices=['best', 'last'], required=True)
+    parser.add_argument('--device', choices=['cpu', 'cuda', 'cuda:0'], default='cuda:0')
+    parser.add_argument('--output-dir', type=Path, default=ROOT/'inference')
+    args = parser.parse_args()
+    print(json.dumps(infer(args.run_dir, args.tag, args.data_root, args.device, args.output_dir), indent=2))

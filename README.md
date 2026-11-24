@@ -2,17 +2,23 @@
 
 **Relation-Guided Sea Clutter Suppression with Joint Target and Background Constraints**
 
-RG-SCS 从复数雷达回波中学习目标相位变化，用两侧参考距离单元估计海杂波，再通过预条件共轭梯度法求解目标回波。
+RG-SCS estimates target phase evolution from complex radar echoes and learns clutter dynamics from neighboring range cells. A preconditioned conjugate gradient solver uses both constraints to recover the target echo.
 
-| 实测输入 | RG-SCS 输出 |
+![RG-SCS framework showing target phase estimation, reference-based clutter calibration and joint recovery](assets/framework.png)
+
+## Results on measured echoes
+
+| Input | RG-SCS output |
 | :---: | :---: |
-| ![处理前的距离–多普勒图](assets/input.png) | ![处理后的距离–多普勒图](assets/output.png) |
+| ![Input range–Doppler map](assets/input.png) | ![Filtered range–Doppler map](assets/output.png) |
 
-两图使用相同的幅度色标。处理后，近零多普勒处的目标回波仍清晰可见，周围杂波减弱。
+Both panels use the same amplitude scale. The comparison below shows the same echo processed by five baselines and RG-SCS (labeled *Ours*).
 
-### 快速运行
+![Comparison with Adaptive MTI, k-means SVD, UNet, CV-UNet and CVNN](assets/comparison.png)
 
-在仓库根目录执行。最后一条命令使用随机权重和模拟输入，在 CPU 上验证模型前向计算。
+## Run on CPU
+
+From the repository root, use Python 3.11 and install the dependencies.
 
 ```bash
 python -m venv .venv
@@ -21,16 +27,24 @@ python -m pip install -r requirements.txt
 python method/check_forward.py
 ```
 
-### 训练与推理
-
-完整实验需要 CUDA 和原始 NPZ 数据。按 [样本清单](reports/manifest.csv) 中的相对路径放置输入和标签。仓库提供源码与实测效果图，数据和预训练权重需另行准备。
+Generate two synthetic training examples and one test example, train for one epoch, then run inference with the saved checkpoint.
 
 ```bash
-python method/train.py              # 训练并评估 best 和 last
-python method/train.py --resume     # 中断后续训
-python method/infer.py --tag best   # 用已训练的最佳权重单独推理
+python examples/make_demo.py --output demo-data
+python method/train.py --data-root demo-data --epochs 1 --batch-size 2 --device cpu --num-workers 0 --run-dir runs/demo --skip-inference
+python method/infer.py --data-root demo-data --run-dir runs/demo --tag last --device cpu --output-dir inference/demo
 ```
 
-[模型](method/model.py) · [求解器](method/base_model.py) · [损失函数](method/losses.py) · [训练配置](method/config.json)
+The demo writes a range–Doppler plot and per-sample metrics to `inference/demo/last/`. The measured results above come from the full experiment.
 
-权重保存在 `runs/rg-scs/`，推理图与指标保存在 `inference/best/` 或 `inference/last/`。默认从头训练使用 250 轮余弦学习率调度；图示实验在第 85 轮后以固定学习率续训。
+## Train on the full dataset
+
+Set `DATA_ROOT` to the directory containing [reports/manifest.csv](reports/manifest.csv) and the NPZ files at the paths listed in it. Supply the original NPZ data for this run. Training writes the weights used by the inference command.
+
+```bash
+DATA_ROOT=/path/to/data-root
+python method/train.py --data-root "$DATA_ROOT" --epochs 250 --batch-size 768 --device cuda --run-dir runs/full --skip-inference
+python method/infer.py --data-root "$DATA_ROOT" --run-dir runs/full --tag best --device cuda --output-dir inference/full
+```
+
+Training reads the `train` split. Add `--resume` to the same command to continue an interrupted run. Inference reads the `test` split and loads `best.pt` or `last.pt` from the run directory. Best-checkpoint selection begins at epoch 21. Fresh runs use cosine decay; the experiment shown above used a fixed learning rate after epoch 85.
