@@ -106,13 +106,45 @@ def infer(run, tag, data_root=ROOT, device="cuda:0", output_root=ROOT/"inference
     dump(dest/'summary.json',summary)
     dump(dest/'completed.json',dict(success=True,png_count=len(rr),checkpoint_sha256=sha,manifest_sha256=manifest_hash,data_root=dataset_id))
     return summary
+def infer_sample(input_path, checkpoint_path, output_dir, first_range_bin, device):
+    sample = load_input({"input_path": input_path.resolve()})
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    config = dict(checkpoint["config"], cg_iterations=384, cg_tolerance=1e-6)
+    model = RGSCS(config).to(device).eval()
+    model.load_state_dict(checkpoint["model"])
+    with torch.inference_mode():
+        inputs = [torch.from_numpy(sample[k])[None].to(device)
+                  for k in ("x", "refs_left", "refs_right")]
+        prediction = model(*inputs)
+        output = prediction["s_hat"][0].cpu().numpy()
+        residual = prediction["solve_residual"].max().item()
+    if not np.isfinite(output).all() or not residual < 5e-5:
+        raise RuntimeError(f"Recovery failed (relative residual {residual:g})")
+    scale = float(rd(sample["x"]).max())
+    plot(output_dir / "input.png", sample["x"], "Input", first_range_bin, scale)
+    plot(output_dir / "output.png", output, "RG-SCS output", first_range_bin, scale)
+    np.save(output_dir / "target_estimate.npy", output)
+    print(f"Wrote prediction and range–Doppler plots to {output_dir}")
+
+
 if __name__=='__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-root', type=Path, default=ROOT)
     parser.add_argument('--run-dir', type=Path, default=ROOT/'runs/rg-scs')
-    parser.add_argument('--tag', choices=['best', 'last'], required=True)
-    parser.add_argument('--device', choices=['cpu', 'cuda', 'cuda:0'], default='cuda:0')
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--tag', choices=['best', 'last'], help='Evaluate a dataset split with a run checkpoint')
+    mode.add_argument('--input', type=Path, help='Process one normalized complex IQ sample')
+    parser.add_argument('--checkpoint', type=Path, help='Trained checkpoint for single-sample inference')
+    parser.add_argument('--first-range-bin', type=int, default=1)
+    parser.add_argument('--device', choices=['cpu', 'cuda', 'cuda:0'], default='cuda:0' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--output-dir', type=Path, default=ROOT/'inference')
     args = parser.parse_args()
-    print(json.dumps(infer(args.run_dir, args.tag, args.data_root, args.device, args.output_dir), indent=2))
+    if args.input is not None:
+        if args.checkpoint is None:
+            parser.error('--input requires --checkpoint')
+        infer_sample(args.input, args.checkpoint, args.output_dir, args.first_range_bin, args.device)
+    else:
+        if args.checkpoint is not None:
+            parser.error('--checkpoint requires --input')
+        print(json.dumps(infer(args.run_dir, args.tag, args.data_root, args.device, args.output_dir), indent=2))
