@@ -1,0 +1,7 @@
+__pycache__/
+.venv/
+.DS_Store
+dataset/
+runs/
+inference/
+reports/training_status.json
