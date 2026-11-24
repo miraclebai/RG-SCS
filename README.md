@@ -2,7 +2,7 @@
 
 **Relation-Guided Sea Clutter Suppression with Joint Target and Background Constraints**
 
-RG-SCS estimates target phase evolution from complex radar echoes and learns clutter dynamics from neighboring range cells. A preconditioned conjugate gradient solver uses both constraints to recover the target echo.
+Sea clutter superimposed on target echoes degrades maritime target detection, making effective suppression essential. However, conventional model-based methods can suffer from mismatch under nonstationarity, while deep learning methods relying solely on learned mappings leave target and clutter relations implicit. We propose Relation-Guided Sea Clutter Suppression (RG-SCS). It learns target phase evolution from complex echoes and calibrates clutter prediction relations using neighboring references. Complementary constraints couple target consistency of retained components with clutter consistency of removed components through quadratic optimization, balancing target preservation and clutter suppression. The associated complex linear system is solved using the preconditioned conjugate gradient (PCG) method. Extensive experiments on measured radar data demonstrate effective clutter attenuation and improved target visibility.
 
 ![RG-SCS framework showing target phase estimation, reference-based clutter calibration and joint recovery](assets/framework.png)
 
@@ -12,7 +12,7 @@ RG-SCS estimates target phase evolution from complex radar echoes and learns clu
 | :---: | :---: |
 | ![Input range–Doppler map](assets/input.png) | ![Filtered range–Doppler map](assets/output.png) |
 
-Both panels use the same amplitude scale. The comparison below shows the same echo processed by five baselines and RG-SCS (labeled *Ours*).
+The figure below compares five baselines with our proposed method on the same measured echo.
 
 ![Comparison with Adaptive MTI, k-means SVD, UNet, CV-UNet and CVNN](assets/comparison.png)
 
@@ -26,14 +26,11 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-[Download the example ZIP](https://github.com/miraclebai/RG-SCS/releases/download/example-files/rg-scs-example.zip?v=2)
+Place the [weights and measured sample](https://drive.google.com/drive/folders/1kEigFTATnGg4rN3PgM6bga0SSPn2WjKx) in the repository root.
 
 ```bash
-unzip rg-scs-example.zip
 python method/infer.py --checkpoint best.pt --input real_20221113070041_stare_HH_p000512_r0492.npz --first-range-bin 492 --output-dir inference/measured
 ```
-
-The command writes the complex target estimate and two range–Doppler plots with a shared amplitude scale to `inference/measured/`.
 
 ## Train on the full dataset
 
@@ -46,5 +43,3 @@ DATA_ROOT=/path/to/data-root
 python method/train.py --data-root "$DATA_ROOT" --epochs 250 --batch-size 768 --device cuda --run-dir runs/full --skip-inference
 python method/infer.py --data-root "$DATA_ROOT" --run-dir runs/full --tag best --device cuda --output-dir inference/full
 ```
-
-Training reads the `train` split. Add `--resume` to the same command to continue an interrupted run. Inference reads the `test` split and loads `best.pt` or `last.pt` from the run directory. Fresh runs use cosine decay; the experiment shown above used a fixed learning rate after epoch 85.
